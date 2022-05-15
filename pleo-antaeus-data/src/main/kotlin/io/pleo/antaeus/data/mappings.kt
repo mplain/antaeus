@@ -5,12 +5,10 @@
 
 package io.pleo.antaeus.data
 
-import io.pleo.antaeus.models.Currency
-import io.pleo.antaeus.models.Customer
-import io.pleo.antaeus.models.Invoice
-import io.pleo.antaeus.models.InvoiceStatus
-import io.pleo.antaeus.models.Money
+import io.pleo.antaeus.models.*
 import org.jetbrains.exposed.sql.ResultRow
+import org.jetbrains.exposed.sql.count
+import java.time.Instant
 
 fun ResultRow.toInvoice(): Invoice = Invoice(
     id = this[InvoiceTable.id],
@@ -25,4 +23,17 @@ fun ResultRow.toInvoice(): Invoice = Invoice(
 fun ResultRow.toCustomer(): Customer = Customer(
     id = this[CustomerTable.id],
     currency = Currency.valueOf(this[CustomerTable.currency])
+)
+
+fun ResultRow.toBillingLog(): BillingLog = BillingLog(
+    id = this[BillingLogTable.id],
+    invoiceId = this[BillingLogTable.invoiceId],
+    result = this[BillingLogTable.result],
+    comment = this[BillingLogTable.comment],
+    timestamp = this[BillingLogTable.timestamp].let { Instant.ofEpochMilli(it.millis) }
+)
+
+fun ResultRow.toBillingLogCount(): BillingLogCount = BillingLogCount(
+    result = this[BillingLogTable.result],
+    count = this[BillingLogTable.id.count()]
 )

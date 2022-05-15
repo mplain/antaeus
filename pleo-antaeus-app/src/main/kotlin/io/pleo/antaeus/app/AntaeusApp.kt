@@ -8,12 +8,8 @@
 package io.pleo.antaeus.app
 
 import getPaymentProvider
-import io.pleo.antaeus.core.services.BillingService
-import io.pleo.antaeus.core.services.CustomerService
-import io.pleo.antaeus.core.services.InvoiceService
-import io.pleo.antaeus.data.AntaeusDal
-import io.pleo.antaeus.data.CustomerTable
-import io.pleo.antaeus.data.InvoiceTable
+import io.pleo.antaeus.core.services.*
+import io.pleo.antaeus.data.*
 import io.pleo.antaeus.rest.AntaeusRest
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -21,13 +17,14 @@ import org.jetbrains.exposed.sql.StdOutSqlLogger
 import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.sqlite.SQLiteDataSource
 import setupInitialData
 import java.io.File
 import java.sql.Connection
 
 fun main() {
     // The tables to create in the database.
-    val tables = arrayOf(InvoiceTable, CustomerTable)
+    val tables = arrayOf(InvoiceTable, CustomerTable, BillingLogTable, ScheduledTasksTable)
 
     val dbFile: File = File.createTempFile("antaeus-db", ".sqlite")
     // Connect to the database and create the needed tables. Drop any existing data.
@@ -61,11 +58,15 @@ fun main() {
     val customerService = CustomerService(dal = dal)
 
     // This is _your_ billing service to be included where you see fit
-    val billingService = BillingService(paymentProvider = paymentProvider)
+    val billingService = BillingService(paymentProvider = paymentProvider, dal = dal, emailService = EmailService())
+    val dataSource = SQLiteDataSource().apply { url = "jdbc:sqlite:${dbFile.absolutePath}" }
+    val schedulerService = SchedulerService(dataSource = dataSource, billingService = billingService)
 
     // Create REST web service
     AntaeusRest(
         invoiceService = invoiceService,
-        customerService = customerService
+        customerService = customerService,
+        billingService = billingService,
+        schedulerService = schedulerService
     ).run()
 }

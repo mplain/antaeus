@@ -5,23 +5,34 @@
 package io.pleo.antaeus.rest
 
 import io.javalin.Javalin
-import io.javalin.apibuilder.ApiBuilder.get
-import io.javalin.apibuilder.ApiBuilder.path
+import io.javalin.apibuilder.ApiBuilder.*
+import io.javalin.http.Context
 import io.pleo.antaeus.core.exceptions.EntityNotFoundException
+import io.pleo.antaeus.core.services.BillingService
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
+import io.pleo.antaeus.core.services.SchedulerService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
+import org.eclipse.jetty.http.HttpStatus
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 private val logger = KotlinLogging.logger {}
 private val thisFile: () -> Unit = {}
 
 class AntaeusRest(
     private val invoiceService: InvoiceService,
-    private val customerService: CustomerService
+    private val customerService: CustomerService,
+    private val billingService: BillingService,
+    private val schedulerService: SchedulerService
 ) : Runnable {
 
     override fun run() {
         app.start(7000)
+        schedulerService.start()
     }
 
     // Set up Javalin rest app
@@ -78,8 +89,46 @@ class AntaeusRest(
                             it.json(customerService.fetch(it.pathParam("id").toInt()))
                         }
                     }
+
+                    path("billing") {
+                        // URL: /rest/v1/billing/process
+                        post("process") {
+                            it.async { billingService.processPendingInvoices() }
+                        }
+
+                        // URL: /rest/v1/billing/close
+                        post("close") {
+                            it.async { billingService.closePendingInvoices() }
+                        }
+
+                        // URL: /rest/v1/billing/report
+                        post("report") {
+                            val from = it.queryParam("from")?.let(Instant::parse)
+                                ?: Instant.now().minus(1, ChronoUnit.DAYS)
+                            val to = it.queryParam("to")?.let(Instant::parse)
+                                ?: Instant.now()
+                            it.async { billingService.sendBillingReport(from = from, to = to) }
+                        }
+                    }
+
+                    path("scheduler") {
+                        // URL: /rest/v1/scheduler/start
+                        post("start") {
+                            schedulerService.start()
+                        }
+
+                        // URL: /rest/v1/scheduler/stop
+                        post("stop") {
+                            schedulerService.stop()
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private fun Context.async(job: () -> Unit) {
+        CoroutineScope(Dispatchers.Default).launch { job() }
+        status(HttpStatus.ACCEPTED_202)
     }
 }
